@@ -1,11 +1,12 @@
 const PLAYER = 0;
 const ENEMY = 1;
 
-const numOfPlayerBullets = 60;
+const numOfPlayerBullets = 200;
 const numOfEnemyBullets = 1000;
 const mainFont = "60px Monospace";
 const gameOverTextFont = "100px Arial";
 const gameOverSubscriptFont = "60px Arial";
+const tinyFont = "20px Arial";
 const gameOverText = "Game Over";
 const gameOverSubscript = "Press Enter to Restart";
 const statusColor = "#CCCCCC";
@@ -41,8 +42,11 @@ let score;  // displayed
 let lives;  // displayed
 let pause;
 
+resizeActiveCanvas();
+window.addEventListener("resize", resizeActiveCanvas);
 requestAnimationFrame(init);
 
+/// Initialize the game, can be used to reset the game for a second run.
 function init(currentTime) {
     if(!initialized) {
         backCanvas.width = canvasMaxWidth;
@@ -71,7 +75,7 @@ function init(currentTime) {
     enemies = [];
 
     enemyScheduler = new EnemyScheduler();
-    player = new Player(canvasMaxWidth / 2, canvasMaxHeight - 30);
+    player = new Player(canvasMaxWidth / 2, canvasMaxHeight - 40);
 
     if(!initialized) {
         initialized = true;
@@ -79,6 +83,7 @@ function init(currentTime) {
     }
 }
 
+/// A 1 value in input means just clicked. A 2 means it has been held down for more than one frame.
 function advanceInput() {
     for(let key in input) {
         if(input[key] === 1) {
@@ -87,6 +92,7 @@ function advanceInput() {
     }
 }
 
+/// Logic of the enemies, player, and bullet movements and collision detection.
 function logic(elapsed) {
     if(lives >= 0) {
         enemyScheduler.logic(elapsed);
@@ -114,6 +120,7 @@ function logic(elapsed) {
     }
 }
 
+/// Draw everything on the back-canvas.
 function draw(ctx) {
     ctx.fillStyle = "#222222";
     ctx.fillRect(0, 0, canvasMaxWidth, canvasMaxHeight);
@@ -122,10 +129,22 @@ function draw(ctx) {
     ctx.fillStyle = statusColor;
     let scoreText = "Score:  " + score;
     let livesText = "Shield: " + Math.max(0, lives);
+    let beamText =  "Beam:   " + Math.round(player.currentBeamCharge);
     let scoreDim = getTextDimensions(mainFont, scoreText);
     let livesDim = getTextDimensions(mainFont, livesText);
+    let beamDim = getTextDimensions(mainFont, beamText);
     ctx.fillText(scoreText, 10, canvasMaxHeight - scoreDim.height * mainFontHeightRatio + 40);
     ctx.fillText(livesText, 10, canvasMaxHeight - scoreDim.height * mainFontHeightRatio + 40 - livesDim.height * mainFontHeightRatio);
+    ctx.fillText(beamText, 10, canvasMaxHeight - scoreDim.height * mainFontHeightRatio + 40 - livesDim.height * mainFontHeightRatio - beamDim.height * mainFontHeightRatio);
+
+    ctx.font = tinyFont;
+    let createdByText = "Created by Derek Pockrandt 2018";
+    let createdByDim = getTextDimensions(tinyFont, createdByText);
+    ctx.fillText(createdByText, canvasMaxWidth - createdByDim.width, canvasMaxHeight - createdByDim.height * mainFontHeightRatio + 5);
+
+    let instructions = "Use WASD to move and Space to fire. Your beam weapon has a limited charge and recharges over time.";
+    let instructionsDim = getTextDimensions(tinyFont, instructions);
+    ctx.fillText(instructions, (canvasMaxWidth - instructionsDim.width) / 2, canvasMaxHeight - instructionsDim.height * mainFontHeightRatio + 5);
 
     playerBullets.forEach(function (bullet) {
         if(bullet.active) {
@@ -156,6 +175,7 @@ function draw(ctx) {
     }
 }
 
+/// The animation frame calls this function. We do the logic and advance input, then draw to the back buffer, then draw to the main canvas.
 function frameLoop(currentTime) {
     let elapsed = currentTime - lastFrameTime;
     lastFrameTime = currentTime;
@@ -168,14 +188,13 @@ function frameLoop(currentTime) {
     activeCanvas.getContext("2d").drawImage(backCanvas, 0, 0);
 }
 
-resizeActiveCanvas();
-window.addEventListener("resize", resizeActiveCanvas);
-
+/// Manages output of enemies at a reducing interval.
 function EnemyScheduler() {
     this.timeElapsed = 0;
     this.timePerEnemy = 1000;
 }
 
+/// Logic of enemy scheduler. Sends out enemies at a reducing interval.
 EnemyScheduler.prototype.logic = function(elapsed) {
     this.timeElapsed += elapsed;
     if(this.timeElapsed > this.timePerEnemy) {
@@ -185,6 +204,7 @@ EnemyScheduler.prototype.logic = function(elapsed) {
     }
 };
 
+/// Enemy object. Not all of these variables are used, some are kept from copy of player object for future attack patterns.
 function Enemy() {
     this.active = true;
     this.attackMode = 0;
@@ -237,6 +257,8 @@ Enemy.prototype.logic = function(elapsed) {
         }
     }
 
+    // Enemies have different attack modes.
+    // Right now this is the only one that is implemented.
     if(this.attackMode === 0) {
         // Friction
         this.vx *= Math.pow(this.friction, elapsed);
@@ -279,21 +301,22 @@ Enemy.prototype.logic = function(elapsed) {
         }
     } else {
         // Arrow keys affect forward/left/right/backward velocity.
-        if(input.left && !input.right) {
-            this.vx += (-this.maxVx - this.vx) * this.acceleration * elapsed;
-        }
-        if(input.right && !input.left) {
-            this.vx += (this.maxVx - this.vx) * this.acceleration * elapsed;
-        }
-        if(input.forward && !input.backward) {
-            this.vy += (-this.maxVy - this.vy) * this.acceleration * elapsed;
-        }
-        if(input.backward && !input.forward) {
-            this.vy += (this.maxVy - this.vy) * this.acceleration * elapsed;
-        }
+        // if(input.left && !input.right) {
+        //     this.vx += (-this.maxVx - this.vx) * this.acceleration * elapsed;
+        // }
+        // if(input.right && !input.left) {
+        //     this.vx += (this.maxVx - this.vx) * this.acceleration * elapsed;
+        // }
+        // if(input.forward && !input.backward) {
+        //     this.vy += (-this.maxVy - this.vy) * this.acceleration * elapsed;
+        // }
+        // if(input.backward && !input.forward) {
+        //     this.vy += (this.maxVy - this.vy) * this.acceleration * elapsed;
+        // }
     }
 };
 
+/// Bullet object.
 function Bullet(owner) {
     this.active = false;
     this.owner = owner;
@@ -307,6 +330,8 @@ function Bullet(owner) {
     this.vy = 0;
 }
 
+/// Called when a bullet is being created.
+/// Bullets are initialized on startup, but activated and deactivated as needed.
 Bullet.prototype.init = function(color, shadowColor, xPos, yPos, scale, vx, vy) {
     this.active = true;
     this.color = color;
@@ -317,7 +342,7 @@ Bullet.prototype.init = function(color, shadowColor, xPos, yPos, scale, vx, vy) 
     this.height = 8;
     this.scale = scale;
     this.vx = 0;//vx;
-    this.vy = -0.2 + (this.owner * 0.4);// + vy;
+    this.vy = -0.2 + (this.owner * 0.4);// + vy;    // Players go up, enemies go down.
 };
 
 Bullet.prototype.draw = function(ctx) {
@@ -338,6 +363,7 @@ Bullet.prototype.logic = function(elapsed) {
 
     let widthMargin = this.width;
     let heightMargin = this.height;
+    /// Bullet deactivates if out of bounds.
     if( this.x < -widthMargin ||
         this.x > canvasMaxWidth + widthMargin ||
         this.y < -heightMargin ||
@@ -346,6 +372,7 @@ Bullet.prototype.logic = function(elapsed) {
     }
 
     if(this.owner === PLAYER) {
+        /// Check for collision on enemies.
         for(let i = 0; i < enemies.length; i++) {
             if(enemies[i].active) {
                 let xDiff = Math.abs(enemies[i].x - this.x);
@@ -360,6 +387,7 @@ Bullet.prototype.logic = function(elapsed) {
             }
         }
     } else if (this.owner === ENEMY) {
+        // Check for collision on player.
         let xDiff = Math.abs(player.x - this.x);
         let yDiff = Math.abs(player.y - this.y);
         if(xDiff <= (player.width / 2 * player.scale + this.width / 2 * this.scale) &&
@@ -371,15 +399,20 @@ Bullet.prototype.logic = function(elapsed) {
     }
 };
 
+/// Player object.
 function Player(xPos, yPos) {
     this.vx = 0;
     this.vy = 0;
-    this.friction = 0.995;
-    this.maxVx = 2;
+    this.friction = 0.995;  // Rate at which velocity slows down
+    this.maxVx = 2; // Max possible x and y velocity.
     this.maxVy = 2;
-    this.acceleration = 0.005;
-    this.fireRate = 0;
-    this.elapsedUntilNextFire = 0;
+    this.acceleration = 0.003;  // Rate at which velocities increases, see logic.
+    this.beamDrainRate = 1;
+    this.beamRechargeRate = 0.01;
+    this.maxBeamCharge = 100;
+    this.currentBeamCharge = this.maxBeamCharge;
+    this.emptyRechargeDelay = 1000;
+    this.currentEmptyRechargeDelay = 0;
 
     this.x = xPos;
     this.y = yPos;
@@ -398,9 +431,12 @@ Player.prototype.draw = function(ctx) {
 };
 
 Player.prototype.logic = function(elapsed) {
-    this.elapsedUntilNextFire -= elapsed;
+    this.currentBeamCharge += this.beamRechargeRate * elapsed;
+    if(this.currentBeamCharge > this.maxBeamCharge) {
+        this.currentBeamCharge = this.maxBeamCharge;
+    }
     // Player fires bullet
-    if(input.space && this.elapsedUntilNextFire <= 0) {
+    if(input.space && this.currentBeamCharge > this.beamDrainRate && this.currentEmptyRechargeDelay <= 0) {
         for(let i = 0; i < numOfPlayerBullets; i++) {
             if(!playerBullets[i].active) {
                 playerBullets[i].init(
@@ -411,10 +447,15 @@ Player.prototype.logic = function(elapsed) {
                     this.scale,
                     this.vx,
                     this.vy);
-                this.elapsedUntilNextFire = this.fireRate;
+                this.currentBeamCharge -= this.beamDrainRate;
                 break;
             }
         }
+    }
+    this.currentEmptyRechargeDelay -= elapsed;
+
+    if(this.currentBeamCharge < 1) {
+        this.currentEmptyRechargeDelay = this.emptyRechargeDelay;
     }
 
     // Player could run into one of the enemies
@@ -490,6 +531,7 @@ window.addEventListener("keyup", function(event) {
     }
 });
 
+// Parse key value and match it to the correct input object attribute.
 function parseInputKey(key, value) {
     switch(key) {
         case "w":
@@ -527,6 +569,7 @@ function parseInputKey(key, value) {
     return true;
 }
 
+/// Dynamically resizes the canvas up to a maximum size based on available window space.
 function resizeActiveCanvas() {
     let screenWidth = window.innerWidth;
     let screenHeight = window.innerHeight;
@@ -559,31 +602,31 @@ function resizeActiveCanvas() {
 }
 
 
-/// Get the polar distance and angle between two points.
-/// Distance is [0] returned item.
-/// Angle is [1] returned item.
-function polarDistanceAndAngle(x1, y1, x2, y2) {
-    let dX = x2 - x1;
-    let dY = y2 - y1;
-
-    let distance = Math.sqrt(dX * dX + dY * dY);
-    let angle = Math.atan2(dY, dX);
-    return [distance, angle];
-}
-
-function polarToRect(r, angle) {
-    return [
-        r * Math.cos(angle),
-        r * Math.sin(angle)
-    ];
-}
-
-/// Change the cursor to newCursor if it isn't already set to it.
-function setCursorTo(newCursor) {
-    if(activeCanvas.style.cursor !== newCursor) {
-        activeCanvas.style.cursor = newCursor;
-    }
-}
+// /// Get the polar distance and angle between two points.
+// /// Distance is [0] returned item.
+// /// Angle is [1] returned item.
+// function polarDistanceAndAngle(x1, y1, x2, y2) {
+//     let dX = x2 - x1;
+//     let dY = y2 - y1;
+//
+//     let distance = Math.sqrt(dX * dX + dY * dY);
+//     let angle = Math.atan2(dY, dX);
+//     return [distance, angle];
+// }
+//
+// function polarToRect(r, angle) {
+//     return [
+//         r * Math.cos(angle),
+//         r * Math.sin(angle)
+//     ];
+// }
+//
+// /// Change the cursor to newCursor if it isn't already set to it.
+// function setCursorTo(newCursor) {
+//     if(activeCanvas.style.cursor !== newCursor) {
+//         activeCanvas.style.cursor = newCursor;
+//     }
+// }
 
 /// Get the physical dimensions of the provided text if it was to be displayed on-screen.
 /// We use this to center align text in different ways.
@@ -591,6 +634,7 @@ function setCursorTo(newCursor) {
 /// However, this is expensive, so we keep track of measure text to only measure it once.
 /// That is, the text "Blue" will always have the same dimensions, we only need to expensively measure it once.
 /// Returns an array [textWidth, textHeight].
+/// Modified from the Mancala project.
 function getTextDimensions(font, text) {
     let textDimensionsGroup = textDimensionsGroups[text];
     if(textDimensionsGroup == undefined) {
