@@ -3,12 +3,19 @@ const ENEMY = 1;
 
 const numOfPlayerBullets = 60;
 const numOfEnemyBullets = 1000;
+const mainFont = "60px Monospace";
+const gameOverTextFont = "100px Arial";
+const gameOverSubscriptFont = "60px Arial";
+const gameOverText = "Game Over";
+const gameOverSubscript = "Press Enter to Restart";
+const statusColor = "#CCCCCC";
+const mainFontHeightRatio = 7 / 10;
 
 let activeCanvas = document.getElementById("canvas");
 let backCanvas = document.createElement("canvas");
 let backCtx = backCanvas.getContext("2d");
 
-let lastFrameTime = -1;
+let lastFrameTime;
 let initialized = false;
 let input = {
     forward: 0,
@@ -17,25 +24,27 @@ let input = {
     right: 0,
     shift: 0,
     interact: 0,
-    space: 0
+    space: 0,
+    enter: 0
 };
 
-let textDimensions = [];        // Map of text dimensions for performance (don't recalculate dimensions of "0" many times).
+let textDimensionsGroups = [];        // Map of text dimensions for performance (don't recalculate dimensions of "0" many times).
 const canvasMaxWidth = activeCanvas.width;
 const canvasMaxHeight = activeCanvas.height;
 
-let player = new Player(canvasMaxWidth / 2, canvasMaxHeight - 30);
-let enemyScheduler = new EnemyScheduler();
-let enemies = [];
+let player;
+let enemyScheduler;
+let enemies;
 let playerBullets = [];
 let enemyBullets = [];
+let score;  // displayed
+let lives;  // displayed
+let pause;
 
 requestAnimationFrame(init);
 
 function init(currentTime) {
-    lastFrameTime = currentTime;
     if(!initialized) {
-        initialized = true;
         backCanvas.width = canvasMaxWidth;
         backCanvas.height = canvasMaxHeight;
         for(let i = 0; i < numOfPlayerBullets; i++) {
@@ -44,6 +53,28 @@ function init(currentTime) {
         for(let i = 0; i < numOfEnemyBullets; i++) {
             enemyBullets.push(new Bullet(ENEMY));
         }
+    }
+
+    for(let i = 0; i < numOfPlayerBullets; i++) {
+        playerBullets[i].active = false;
+    }
+    for(let i = 0; i < numOfEnemyBullets; i++) {
+        enemyBullets[i].active = false;
+    }
+
+    if(currentTime !== undefined) {
+        lastFrameTime = currentTime;
+    }
+    score = 0;
+    lives = 3;
+    pause = false;
+    enemies = [];
+
+    enemyScheduler = new EnemyScheduler();
+    player = new Player(canvasMaxWidth / 2, canvasMaxHeight - 30);
+
+    if(!initialized) {
+        initialized = true;
         requestAnimationFrame(frameLoop);
     }
 }
@@ -57,29 +88,45 @@ function advanceInput() {
 }
 
 function logic(elapsed) {
-    enemyScheduler.logic(elapsed);
-    playerBullets.forEach(function (bullet) {
-       if(bullet.active) {
-           bullet.logic(elapsed);
-       }
-    });
-    enemyBullets.forEach(function (bullet) {
-       if(bullet.active) {
-           bullet.logic(elapsed);
-       }
-    });
-    enemies.forEach(function (enemy, index) {
-        if(!enemy.active) {
-            enemies.splice(index, 1);
-        }
-        enemy.logic(elapsed);
-    });
-    player.logic(elapsed);
+    if(lives >= 0) {
+        enemyScheduler.logic(elapsed);
+        playerBullets.forEach(function (bullet) {
+            if(bullet.active) {
+                bullet.logic(elapsed);
+            }
+        });
+        enemyBullets.forEach(function (bullet) {
+            if(bullet.active) {
+                bullet.logic(elapsed);
+            }
+        });
+        enemies.forEach(function (enemy, index) {
+            if(!enemy.active) {
+                enemies.splice(index, 1);
+            }
+            enemy.logic(elapsed);
+        });
+        player.logic(elapsed);
+    }
+
+    if(input.enter === 1) {
+        init();
+    }
 }
 
 function draw(ctx) {
     ctx.fillStyle = "#222222";
     ctx.fillRect(0, 0, canvasMaxWidth, canvasMaxHeight);
+
+    ctx.font = mainFont;
+    ctx.fillStyle = statusColor;
+    let scoreText = "Score:  " + score;
+    let livesText = "Shield: " + Math.max(0, lives);
+    let scoreDim = getTextDimensions(mainFont, scoreText);
+    let livesDim = getTextDimensions(mainFont, livesText);
+    ctx.fillText(scoreText, 10, canvasMaxHeight - scoreDim.height * mainFontHeightRatio + 40);
+    ctx.fillText(livesText, 10, canvasMaxHeight - scoreDim.height * mainFontHeightRatio + 40 - livesDim.height * mainFontHeightRatio);
+
     playerBullets.forEach(function (bullet) {
         if(bullet.active) {
             bullet.draw(ctx);
@@ -94,14 +141,29 @@ function draw(ctx) {
         enemy.draw(ctx);
     });
     player.draw(ctx);
+
+    if(lives < 0) {
+        let gameOverTextDim = getTextDimensions(gameOverTextFont, gameOverText);
+        let gameOverSubscriptDim = getTextDimensions(gameOverSubscriptFont, gameOverSubscript);
+
+        ctx.fillStyle = statusColor;
+
+        ctx.font = gameOverTextFont;
+        ctx.fillText(gameOverText, (canvasMaxWidth - gameOverTextDim.width) / 2, (canvasMaxHeight / 2) - 50);
+
+        ctx.font = gameOverSubscriptFont;
+        ctx.fillText(gameOverSubscript, (canvasMaxWidth - gameOverSubscriptDim.width) / 2, (canvasMaxHeight / 2) + 50);
+    }
 }
 
 function frameLoop(currentTime) {
     let elapsed = currentTime - lastFrameTime;
     lastFrameTime = currentTime;
     requestAnimationFrame(frameLoop);
-    logic(elapsed);
-    advanceInput();
+    if(!pause) {
+        logic(elapsed);
+        advanceInput();
+    }
     draw(backCtx);
     activeCanvas.getContext("2d").drawImage(backCanvas, 0, 0);
 }
@@ -117,7 +179,7 @@ function EnemyScheduler() {
 EnemyScheduler.prototype.logic = function(elapsed) {
     this.timeElapsed += elapsed;
     if(this.timeElapsed > this.timePerEnemy) {
-        this.timePerEnemy -= 10;
+        this.timePerEnemy -= 3;
         this.timeElapsed -= this.timePerEnemy;
         enemies.push(new Enemy());
     }
@@ -129,11 +191,13 @@ function Enemy() {
     this.attackState = 0;
 
     this.friction = 0.995;
-    this.maxVx = 0.5;
+    this.maxVx = 0.2;
     this.maxVy = 0.5;
+    this.vyVarianceJump = 0.3;
     this.acceleration = 0.005;
     this.fireRate = 1000;
-    this.elapsedUntilNextFire = this.fireRate;
+    this.fireRateVariance = 400;
+    this.elapsedUntilNextFire = this.fireRate + (Math.random() * this.fireRateVariance) - this.fireRateVariance / 2;
     this.vx = 0;
     this.vy = this.maxVy;
 
@@ -167,7 +231,7 @@ Enemy.prototype.logic = function(elapsed) {
                     this.scale,
                     this.vx,
                     this.vy);
-                this.elapsedUntilNextFire = this.fireRate;
+                this.elapsedUntilNextFire = this.fireRate + (Math.random() * this.fireRateVariance) - this.fireRateVariance / 2;
                 break;
             }
         }
@@ -197,12 +261,12 @@ Enemy.prototype.logic = function(elapsed) {
             this.x = widthMargin;
             this.vx *= -1;
             this.attackState++;
-            this.vy = this.maxVy;
+            this.vy = this.maxVy + (Math.random() * this.vyVarianceJump) - this.vyVarianceJump / 2;
         } else if (this.x > canvasMaxWidth - widthMargin) {
             this.x = canvasMaxWidth - widthMargin;
             this.vx *= -1;
             this.attackState++;
-            this.vy = this.maxVy;
+            this.vy = this.maxVy + (Math.random() * this.vyVarianceJump) - this.vyVarianceJump / 2;
         }
 
         if(this.y < -this.height) {
@@ -210,6 +274,7 @@ Enemy.prototype.logic = function(elapsed) {
             this.vy *= -1;
         } else if (this.y > canvasMaxHeight + this.height) {
             this.active = false;
+            lives--;
             // lose life?
         }
     } else {
@@ -252,7 +317,7 @@ Bullet.prototype.init = function(color, shadowColor, xPos, yPos, scale, vx, vy) 
     this.height = 8;
     this.scale = scale;
     this.vx = 0;//vx;
-    this.vy = -0.5 + (this.owner * 1);// + vy;
+    this.vy = -0.2 + (this.owner * 0.4);// + vy;
 };
 
 Bullet.prototype.draw = function(ctx) {
@@ -282,13 +347,16 @@ Bullet.prototype.logic = function(elapsed) {
 
     if(this.owner === PLAYER) {
         for(let i = 0; i < enemies.length; i++) {
-            let xDiff = Math.abs(enemies[i].x - this.x);
-            let yDiff = Math.abs(enemies[i].y - this.y);
-            if(xDiff <= (enemies[i].width / 2 * enemies[i].scale + this.width / 2 * this.scale) &&
-                yDiff <= (enemies[i].height / 2 *enemies[i].scale + this.height / 2 * this.scale)) {
-                enemies[i].active = false;
-                this.active = false;
-                break;
+            if(enemies[i].active) {
+                let xDiff = Math.abs(enemies[i].x - this.x);
+                let yDiff = Math.abs(enemies[i].y - this.y);
+                if(xDiff <= (enemies[i].width / 2 * enemies[i].scale + this.width / 2 * this.scale) &&
+                    yDiff <= (enemies[i].height / 2 *enemies[i].scale + this.height / 2 * this.scale)) {
+                    enemies[i].active = false;
+                    this.active = false;
+                    score++;
+                    break;
+                }
             }
         }
     } else if (this.owner === ENEMY) {
@@ -298,6 +366,7 @@ Bullet.prototype.logic = function(elapsed) {
             yDiff <= (player.height / 2 * player.scale + this.height / 2 * this.scale)) {
             // lose a life?
             this.active = false;
+            lives--;
         }
     }
 };
@@ -344,6 +413,22 @@ Player.prototype.logic = function(elapsed) {
                     this.vy);
                 this.elapsedUntilNextFire = this.fireRate;
                 break;
+            }
+        }
+    }
+
+    // Player could run into one of the enemies
+    for(let i = 0; i < enemies.length; i++) {
+        if(enemies[i].active) {
+            let xDiff = Math.abs(enemies[i].x - this.x);
+            let yDiff = Math.abs(enemies[i].y - this.y);
+            if(xDiff <= (enemies[i].width / 2 * enemies[i].scale + this.width / 2 * this.scale) &&
+                yDiff <= (enemies[i].height / 2 * enemies[i].scale + this.height / 2 * this.scale)) {
+                enemies[i].active = false;
+                lives--;
+                if(lives < 0) {
+                    break;
+                }
             }
         }
     }
@@ -433,6 +518,9 @@ function parseInputKey(key, value) {
         case "Shift":
             input.shift = value;
             break;
+        case "Enter":
+            input.enter = value;
+            break;
         default:
             return false;
     }
@@ -503,13 +591,31 @@ function setCursorTo(newCursor) {
 /// However, this is expensive, so we keep track of measure text to only measure it once.
 /// That is, the text "Blue" will always have the same dimensions, we only need to expensively measure it once.
 /// Returns an array [textWidth, textHeight].
-function getTextDimensions(text) {
-    let dimensions = textDimensions[text];
-    if(dimensions == undefined) {
-        let tester = document.getElementById("textWidthTester");
-        tester.innerText = text;
-        dimensions = [tester.clientWidth + 1, tester.clientHeight + 1];
-        textDimensions[text] =  dimensions;
+function getTextDimensions(font, text) {
+    let textDimensionsGroup = textDimensionsGroups[text];
+    if(textDimensionsGroup == undefined) {
+        textDimensionsGroup = new TextDimensionsGroup(text);
+        textDimensionsGroups[text] = textDimensionsGroup;
     }
-    return dimensions;
+    return textDimensionsGroup.getDimensions(font);
 }
+
+function TextDimensionsGroup(text) {
+    this.text = text;
+    this.dimensionsByFont = [];
+}
+
+TextDimensionsGroup.prototype.getDimensions = function(font) {
+    let dimension = this.dimensionsByFont[font];
+    if(dimension == undefined) {
+        let tester = document.getElementById("textWidthTester");
+        tester.style.font = font;
+        tester.innerText = this.text;
+        dimension = {
+            width: tester.clientWidth + 1,
+            height: tester.clientHeight + 1
+        };
+        this.dimensionsByFont[font] = dimension;
+    }
+    return dimension;
+};
